@@ -152,7 +152,13 @@ function buildEthernetPacket(srcMac, dstMac, etherType, payload) {
     dstMac.copy(header, 0);
     srcMac.copy(header, 6);
     header.writeUInt16BE(etherType, 12);
-    return Buffer.concat([header, payload]);
+    
+    let packet = Buffer.concat([header, payload]);
+    if (packet.length < 60) {
+        const padding = Buffer.alloc(60 - packet.length, 0);
+        packet = Buffer.concat([packet, padding]);
+    }
+    return packet;
 }
 
 function buildIpPacket(srcIp, dstIp, protocol, payload) {
