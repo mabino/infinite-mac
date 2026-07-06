@@ -356,7 +356,7 @@ function handleDhcp(udpPayload, clientMac) {
 
     reply[optOffset++] = 255;
 
-    const dhcpPayload = reply.subarray(0, optOffset);
+    const dhcpPayload = reply;
 
     const udpLen = 8 + dhcpPayload.length;
     const udpPacket = Buffer.alloc(udpLen);
