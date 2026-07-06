@@ -37,11 +37,12 @@ export class CloudflareWorkerEthernetProvider
     }
 
     #connect(): WebSocket {
-        const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-        const origin = `${protocol}//${location.host}`;
-        const webSocket = new WebSocket(
-            `${origin}/zone/${this.#zoneName}/websocket`
-        );
+        const params = new URLSearchParams(location.search);
+        const isLocal = this.#zoneName === "local" || params.get("local_ethernet") === "true";
+        const url = isLocal
+            ? "ws://localhost:8080"
+            : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/zone/${this.#zoneName}/websocket`;
+        const webSocket = new WebSocket(url);
         webSocket.addEventListener("open", this.#handleOpen);
         webSocket.addEventListener("close", this.#handleClose);
         webSocket.addEventListener("error", this.#handleError);

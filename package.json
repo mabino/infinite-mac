@@ -43,7 +43,8 @@
         "prettier": "^3.5.3",
         "vite": "^8.0.5",
         "vite-plugin-svgr": "^5.2.0",
-        "wrangler": "^4.80.0"
+        "wrangler": "^4.80.0",
+        "ws": "^8.21.0"
     },
     "scripts": {
         "import-emulator": "scripts/import-emulator.sh",
@@ -54,6 +55,7 @@
         "build-tools": "scripts/build-tools.sh",
         "generate-local-ca-bundle": "node scripts/generate-local-ca-bundle.mjs",
         "start": "scripts/start-dev.sh",
+        "ethernet-router": "node scripts/ethernet-router.js",
         "build": "vite build",
         "preview": "vite preview --host",
         "worker-dev": "wrangler dev --port=3128",

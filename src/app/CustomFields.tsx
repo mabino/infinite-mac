@@ -96,6 +96,7 @@ export function CustomFields({
 
     const [appleTalkEnabled, setAppleTalkEnabled] = useState(false);
     const [appleTalkZoneName, setAppleTalkZoneName] = useState("");
+    const [localNetEnabled, setLocalNetEnabled] = useState(false);
     const [customDateEnabled, setCustomDateEnabled] = useState(
         runDef.flags.customDate !== undefined
     );
@@ -192,10 +193,12 @@ export function CustomFields({
                     appleTalkZoneName !== "")
         );
         setRunDef(runDef => {
-            const ethernetProvider =
-                appleTalkSupported && appleTalkEnabled && appleTalkZoneName
-                    ? new CloudflareWorkerEthernetProvider(appleTalkZoneName)
-                    : undefined;
+            let ethernetProvider = undefined;
+            if (appleTalkSupported && appleTalkEnabled && appleTalkZoneName) {
+                ethernetProvider = new CloudflareWorkerEthernetProvider(appleTalkZoneName);
+            } else if (localNetEnabled) {
+                ethernetProvider = new CloudflareWorkerEthernetProvider("local");
+            }
             return {
                 ...runDef,
                 ethernetProvider,
@@ -212,6 +215,7 @@ export function CustomFields({
         appleTalkEnabled,
         appleTalkZoneName,
         appleTalkSupported,
+        localNetEnabled,
     ]);
 
     const supportsInfiniteHD = machineSupportsInfiniteHD(runDef.machine);
@@ -565,32 +569,55 @@ export function CustomFields({
             </div>
 
             {appleTalkSupported && (
-                <div className="CustomFields-Row CustomFields-InputCompensate">
-                    <span className="CustomFields-Label" />
-                    <label>
-                        <Checkbox
-                            checked={appleTalkEnabled}
-                            onChange={() =>
-                                setAppleTalkEnabled(!appleTalkEnabled)
-                            }
+                <>
+                    <div className="CustomFields-Row CustomFields-InputCompensate">
+                        <span className="CustomFields-Label" />
+                        <label>
+                            <Checkbox
+                                checked={appleTalkEnabled}
+                                onChange={() => {
+                                    setAppleTalkEnabled(!appleTalkEnabled);
+                                    if (!appleTalkEnabled) {
+                                        setLocalNetEnabled(false);
+                                    }
+                                }}
+                            />
+                            Enable AppleTalk (Cloudflare Worker Relay)
+                        </label>{" "}
+                        <Input
+                            style={{
+                                visibility: appleTalkEnabled ? "visible" : "hidden",
+                            }}
+                            type="text"
+                            value={appleTalkZoneName}
+                            placeholder="Zone Name"
+                            size={12}
+                            onChange={e => setAppleTalkZoneName(e.target.value)}
                         />
-                        Enable AppleTalk
-                    </label>{" "}
-                    <Input
-                        style={{
-                            visibility: appleTalkEnabled ? "visible" : "hidden",
-                        }}
-                        type="text"
-                        value={appleTalkZoneName}
-                        placeholder="Zone Name"
-                        size={12}
-                        onChange={e => setAppleTalkZoneName(e.target.value)}
-                    />
-                    <div className="CustomFields-Description Dialog-Description">
-                        Allow local networking between emulated machines in the
-                        same zone.
+                        <div className="CustomFields-Description Dialog-Description">
+                            Allow local networking between emulated machines in the
+                            same zone.
+                        </div>
                     </div>
-                </div>
+                    <div className="CustomFields-Row CustomFields-InputCompensate">
+                        <span className="CustomFields-Label" />
+                        <label>
+                            <Checkbox
+                                checked={localNetEnabled}
+                                onChange={() => {
+                                    setLocalNetEnabled(!localNetEnabled);
+                                    if (!localNetEnabled) {
+                                        setAppleTalkEnabled(false);
+                                    }
+                                }}
+                            />
+                            Enable Local Net (ws://localhost:8080)
+                        </label>
+                        <div className="CustomFields-Description Dialog-Description">
+                            Route traffic through a local router server to browse the web.
+                        </div>
+                    </div>
+                </>
             )}
 
             {blueSCSISupported && (
