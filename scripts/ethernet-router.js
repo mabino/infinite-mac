@@ -418,8 +418,16 @@ function handleIncomingPacket(ws, packet) {
 
     if (etherType === 0x0806) {
         // ARP Request
-        const reply = handleArp(packet.slice(14));
+        const arpPayload = packet.slice(14);
+        const opcode = arpPayload.readUInt16BE(6);
+        const senderMac = Array.from(arpPayload.subarray(8, 14)).map(x => x.toString(16).padStart(2, '0')).join(':');
+        const senderIp = Array.from(arpPayload.subarray(14, 18)).join('.');
+        const targetIp = Array.from(arpPayload.subarray(24, 28)).join('.');
+        console.log(`[ARP] Opcode: ${opcode}, Sender MAC: ${senderMac}, Sender IP: ${senderIp}, Target IP: ${targetIp}`);
+        
+        const reply = handleArp(arpPayload);
         if (reply) {
+            console.log(`[ARP] Sending reply for Target IP: ${targetIp}`);
             ws.send(JSON.stringify({
                 type: 'receive',
                 packetArray: Array.from(reply)
@@ -431,6 +439,10 @@ function handleIncomingPacket(ws, packet) {
         const protocol = packet[14 + 9];
         const srcIp = packet.subarray(14 + 12, 14 + 16);
         const dstIp = packet.subarray(14 + 16, 14 + 20);
+        const srcIpStr = Array.from(srcIp).join('.');
+        const dstIpStr = Array.from(dstIp).join('.');
+
+        console.log(`[IPv4] Protocol: ${protocol}, Src: ${srcIpStr}, Dst: ${dstIpStr}`);
 
         if (protocol === 17) {
             // UDP
@@ -439,6 +451,8 @@ function handleIncomingPacket(ws, packet) {
             const dstPort = packet.readUInt16BE(udpHeaderOffset + 2);
             const len = packet.readUInt16BE(udpHeaderOffset + 4);
             const udpPayload = packet.subarray(udpHeaderOffset + 8, udpHeaderOffset + len);
+
+            console.log(`[UDP] Src Port: ${srcPort}, Dst Port: ${dstPort}, Len: ${len}`);
 
             if (dstPort === 53) {
                 // DNS request
