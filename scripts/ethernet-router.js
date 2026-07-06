@@ -135,6 +135,18 @@ function tcpChecksum(srcIp, destIp, tcpPacket) {
     return checksum(tcpPacket, sum);
 }
 
+function udpChecksum(srcIp, destIp, udpPacket) {
+    let sum = 0;
+    sum += (srcIp[0] << 8) | srcIp[1];
+    sum += (srcIp[2] << 8) | srcIp[3];
+    sum += (destIp[0] << 8) | destIp[1];
+    sum += (destIp[2] << 8) | destIp[3];
+    sum += 17; // Protocol UDP
+    sum += udpPacket.length;
+
+    return checksum(udpPacket, sum);
+}
+
 function buildEthernetPacket(srcMac, dstMac, etherType, payload) {
     const header = Buffer.alloc(14);
     dstMac.copy(header, 0);
@@ -248,6 +260,7 @@ function handleDhcp(udpPayload, clientMac) {
     if (op !== 1) return null;
 
     const xid = udpPayload.subarray(4, 8);
+    const flags = udpPayload.readUInt16BE(10);
     const chaddr = udpPayload.subarray(28, 34);
 
     let msgType = 0;
@@ -279,7 +292,7 @@ function handleDhcp(udpPayload, clientMac) {
     reply[3] = 0;
     xid.copy(reply, 4);
     reply.writeUInt16BE(0, 8);
-    reply.writeUInt16BE(0, 10);
+    reply.writeUInt16BE(flags, 10); // Copy broadcast flag
 
     CLIENT_IP.copy(reply, 16);
     ROUTER_IP.copy(reply, 20);
@@ -323,6 +336,18 @@ function handleDhcp(udpPayload, clientMac) {
     reply.writeUInt32BE(86400, optOffset);
     optOffset += 4;
 
+    // Renewal Time (43200)
+    reply[optOffset++] = 58;
+    reply[optOffset++] = 4;
+    reply.writeUInt32BE(43200, optOffset);
+    optOffset += 4;
+
+    // Rebinding Time (75600)
+    reply[optOffset++] = 59;
+    reply[optOffset++] = 4;
+    reply.writeUInt32BE(75600, optOffset);
+    optOffset += 4;
+
     reply[optOffset++] = 255;
 
     const dhcpPayload = reply.subarray(0, optOffset);
@@ -335,8 +360,15 @@ function handleDhcp(udpPayload, clientMac) {
     udpPacket.writeUInt16BE(0, 6);
     dhcpPayload.copy(udpPacket, 8);
 
-    const ipPacket = buildIpPacket(ROUTER_IP, CLIENT_IP, 17, udpPacket);
-    return buildEthernetPacket(ROUTER_MAC, clientMac, 0x0800, ipPacket);
+    const BROADCAST_IP = Buffer.from([255, 255, 255, 255]);
+    const udpChk = udpChecksum(ROUTER_IP, BROADCAST_IP, udpPacket);
+    udpPacket.writeUInt16BE(udpChk, 6);
+
+    const ipPacket = buildIpPacket(ROUTER_IP, BROADCAST_IP, 17, udpPacket);
+    const broadcastFlag = (flags & 0x8000) !== 0;
+    const destMac = broadcastFlag ? Buffer.from([0xff, 0xff, 0xff, 0xff, 0xff, 0xff]) : clientMac;
+
+    return buildEthernetPacket(ROUTER_MAC, destMac, 0x0800, ipPacket);
 }
 
 
@@ -425,6 +457,9 @@ function handleIncomingPacket(ws, packet) {
                     udpPacket.writeUInt16BE(udpLen, 4);
                     udpPacket.writeUInt16BE(0, 6); // Checksum
                     dnsResp.copy(udpPacket, 8);
+                    
+                    const udpChk = udpChecksum(ROUTER_IP, CLIENT_IP, udpPacket);
+                    udpPacket.writeUInt16BE(udpChk, 6);
                     
                     const ipPacket = buildIpPacket(ROUTER_IP, CLIENT_IP, 17, udpPacket);
                     const ethPacket = buildEthernetPacket(ROUTER_MAC, srcMac, 0x0800, ipPacket);
