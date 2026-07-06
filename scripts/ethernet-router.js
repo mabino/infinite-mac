@@ -431,7 +431,7 @@ function handleIncomingPacket(ws, packet) {
         const senderMac = Array.from(arpPayload.subarray(8, 14)).map(x => x.toString(16).padStart(2, '0')).join(':');
         const senderIp = Array.from(arpPayload.subarray(14, 18)).join('.');
         const targetIp = Array.from(arpPayload.subarray(24, 28)).join('.');
-        console.log(`[ARP] Opcode: ${opcode}, Sender MAC: ${senderMac}, Sender IP: ${senderIp}, Target IP: ${targetIp}`);
+        console.log(`[ARP] Opcode: ${opcode}, Sender MAC: ${senderMac}, Sender IP: ${senderIp}, Target IP: ${targetIp}, Request Hex: ${arpPayload.toString('hex')}`);
         
         const reply = handleArp(arpPayload);
         if (reply) {
