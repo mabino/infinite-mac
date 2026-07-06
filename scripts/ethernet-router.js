@@ -6,7 +6,7 @@ import dns from 'dns';
 import { URL } from 'url';
 
 const ROUTER_IP = Buffer.from([10, 0, 2, 2]);
-const ROUTER_MAC = Buffer.from([2, 0, 0, 0, 0, 1]);
+const ROUTER_MAC = Buffer.from([0, 5, 2, 0, 0, 1]);
 const CLIENT_IP = Buffer.from([10, 0, 2, 15]);
 
 const PROXY_PORT = 8081;
@@ -433,7 +433,7 @@ function handleIncomingPacket(ws, packet) {
         
         const reply = handleArp(arpPayload);
         if (reply) {
-            console.log(`[ARP] Sending reply for Target IP: ${targetIp}`);
+            console.log(`[ARP] Sending reply for Target IP: ${targetIp}, Hex: ${reply.toString('hex')}`);
             ws.send(JSON.stringify({
                 type: 'receive',
                 packetArray: Array.from(reply)
