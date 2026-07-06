@@ -435,8 +435,11 @@ function handleIncomingPacket(ws, packet) {
         
         const arpReplyPayload = handleArp(arpPayload);
         if (arpReplyPayload) {
-            console.log(`[ARP] Delaying and sending reply variations for Target IP: ${targetIp}`);
-            setTimeout(() => {
+            console.log(`[ARP] Sending periodic reply variations for Target IP: ${targetIp}`);
+            
+            const sendReplies = () => {
+                if (ws.readyState !== 1) return; // Only send if WebSocket is still open
+                
                 // Build Ethernet Headers
                 const unicastHeader = Buffer.alloc(14);
                 srcMac.copy(unicastHeader, 0); // destination = srcMac
@@ -468,7 +471,13 @@ function handleIncomingPacket(ws, packet) {
                         packetArray: Array.from(p)
                     }));
                 }
-            }, 50);
+            };
+
+            // Send immediately, after 500ms, 1500ms, and 3000ms
+            sendReplies();
+            setTimeout(sendReplies, 500);
+            setTimeout(sendReplies, 1500);
+            setTimeout(sendReplies, 3000);
         }
     } else if (etherType === 0x0800) {
         // IPv4 Packet
