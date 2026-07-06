@@ -435,39 +435,40 @@ function handleIncomingPacket(ws, packet) {
         
         const arpReplyPayload = handleArp(arpPayload);
         if (arpReplyPayload) {
-            console.log(`[ARP] Sending reply variations for Target IP: ${targetIp}`);
-            
-            // Build Ethernet Headers
-            const unicastHeader = Buffer.alloc(14);
-            srcMac.copy(unicastHeader, 0); // destination = srcMac
-            ROUTER_MAC.copy(unicastHeader, 6); // source = ROUTER_MAC
-            unicastHeader.writeUInt16BE(0x0806, 12);
+            console.log(`[ARP] Delaying and sending reply variations for Target IP: ${targetIp}`);
+            setTimeout(() => {
+                // Build Ethernet Headers
+                const unicastHeader = Buffer.alloc(14);
+                srcMac.copy(unicastHeader, 0); // destination = srcMac
+                ROUTER_MAC.copy(unicastHeader, 6); // source = ROUTER_MAC
+                unicastHeader.writeUInt16BE(0x0806, 12);
 
-            const broadcastHeader = Buffer.alloc(14);
-            Buffer.from([255, 255, 255, 255, 255, 255]).copy(broadcastHeader, 0); // destination = broadcast
-            ROUTER_MAC.copy(broadcastHeader, 6); // source = ROUTER_MAC
-            broadcastHeader.writeUInt16BE(0x0806, 12);
+                const broadcastHeader = Buffer.alloc(14);
+                Buffer.from([255, 255, 255, 255, 255, 255]).copy(broadcastHeader, 0); // destination = broadcast
+                ROUTER_MAC.copy(broadcastHeader, 6); // source = ROUTER_MAC
+                broadcastHeader.writeUInt16BE(0x0806, 12);
 
-            // 1. Unpadded (42 bytes total: 14 header + 28 payload)
-            const uni42 = Buffer.concat([unicastHeader, arpReplyPayload]);
-            const bcast42 = Buffer.concat([broadcastHeader, arpReplyPayload]);
+                // 1. Unpadded (42 bytes total: 14 header + 28 payload)
+                const uni42 = Buffer.concat([unicastHeader, arpReplyPayload]);
+                const bcast42 = Buffer.concat([broadcastHeader, arpReplyPayload]);
 
-            // 2. Padded to 60 bytes
-            const uni60 = Buffer.concat([uni42, Buffer.alloc(60 - uni42.length, 0)]);
-            const bcast60 = Buffer.concat([bcast42, Buffer.alloc(60 - bcast42.length, 0)]);
+                // 2. Padded to 60 bytes
+                const uni60 = Buffer.concat([uni42, Buffer.alloc(60 - uni42.length, 0)]);
+                const bcast60 = Buffer.concat([bcast42, Buffer.alloc(60 - bcast42.length, 0)]);
 
-            // 3. Padded to 64 bytes
-            const uni64 = Buffer.concat([uni42, Buffer.alloc(64 - uni42.length, 0)]);
-            const bcast64 = Buffer.concat([bcast42, Buffer.alloc(64 - bcast42.length, 0)]);
+                // 3. Padded to 64 bytes
+                const uni64 = Buffer.concat([uni42, Buffer.alloc(64 - uni42.length, 0)]);
+                const bcast64 = Buffer.concat([bcast42, Buffer.alloc(64 - bcast42.length, 0)]);
 
-            // Send all 6 variations
-            const packetsToSend = [uni42, bcast42, uni60, bcast60, uni64, bcast64];
-            for (const p of packetsToSend) {
-                ws.send(JSON.stringify({
-                    type: 'receive',
-                    packetArray: Array.from(p)
-                }));
-            }
+                // Send all 6 variations
+                const packetsToSend = [uni42, bcast42, uni60, bcast60, uni64, bcast64];
+                for (const p of packetsToSend) {
+                    ws.send(JSON.stringify({
+                        type: 'receive',
+                        packetArray: Array.from(p)
+                    }));
+                }
+            }, 50);
         }
     } else if (etherType === 0x0800) {
         // IPv4 Packet
