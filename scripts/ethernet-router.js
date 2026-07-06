@@ -154,8 +154,8 @@ function buildEthernetPacket(srcMac, dstMac, etherType, payload) {
     header.writeUInt16BE(etherType, 12);
     
     let packet = Buffer.concat([header, payload]);
-    if (packet.length < 60) {
-        const padding = Buffer.alloc(60 - packet.length, 0);
+    if (packet.length < 64) {
+        const padding = Buffer.alloc(64 - packet.length, 0);
         packet = Buffer.concat([packet, padding]);
     }
     return packet;
@@ -434,9 +434,17 @@ function handleIncomingPacket(ws, packet) {
         const reply = handleArp(arpPayload);
         if (reply) {
             console.log(`[ARP] Sending reply for Target IP: ${targetIp}, Hex: ${reply.toString('hex')}`);
+            // Send unicast reply
             ws.send(JSON.stringify({
                 type: 'receive',
                 packetArray: Array.from(reply)
+            }));
+            // Send broadcast reply (destination MAC: ff:ff:ff:ff:ff:ff)
+            const broadcastReply = Buffer.from(reply);
+            Buffer.from([255, 255, 255, 255, 255, 255]).copy(broadcastReply, 0);
+            ws.send(JSON.stringify({
+                type: 'receive',
+                packetArray: Array.from(broadcastReply)
             }));
         }
     } else if (etherType === 0x0800) {
