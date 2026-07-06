@@ -679,6 +679,10 @@ function handleIncomingPacket(ws, packet) {
                 }
             }
         }
+    } else {
+        const dstMacStr = Array.from(dstMac).map(x => x.toString(16).padStart(2, '0')).join(':');
+        const srcMacStr = Array.from(srcMac).map(x => x.toString(16).padStart(2, '0')).join(':');
+        console.log(`[Ethernet] Unknown EtherType: 0x${etherType.toString(16).padStart(4, '0')} from ${srcMacStr} to ${dstMacStr}`);
     }
 }
 
