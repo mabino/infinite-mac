@@ -243,6 +243,102 @@ function parseDomainName(queryPayload) {
     return parts.join('.');
 }
 
+function handleDhcp(udpPayload, clientMac) {
+    const op = udpPayload[0];
+    if (op !== 1) return null;
+
+    const xid = udpPayload.subarray(4, 8);
+    const chaddr = udpPayload.subarray(28, 34);
+
+    let msgType = 0;
+    let offset = 240;
+    while (offset < udpPayload.length) {
+        const optType = udpPayload[offset];
+        if (optType === 255) break;
+        if (optType === 0) {
+            offset++;
+            continue;
+        }
+        const optLen = udpPayload[offset + 1];
+        if (optType === 53) {
+            msgType = udpPayload[offset + 2];
+        }
+        offset += 2 + optLen;
+    }
+
+    if (msgType !== 1 && msgType !== 3) {
+        return null;
+    }
+
+    console.log(`[DHCP] Received DHCP ${msgType === 1 ? 'Discover' : 'Request'} from Mac`);
+
+    const reply = Buffer.alloc(300);
+    reply[0] = 2; // BootReply
+    reply[1] = 1; // Ethernet
+    reply[2] = 6;
+    reply[3] = 0;
+    xid.copy(reply, 4);
+    reply.writeUInt16BE(0, 8);
+    reply.writeUInt16BE(0, 10);
+
+    CLIENT_IP.copy(reply, 16);
+    ROUTER_IP.copy(reply, 20);
+    chaddr.copy(reply, 28);
+    reply.writeUInt32BE(0x63825363, 236); // Magic Cookie
+
+    let optOffset = 240;
+    
+    // DHCP Message Type (2 Offer, 5 ACK)
+    reply[optOffset++] = 53;
+    reply[optOffset++] = 1;
+    reply[optOffset++] = (msgType === 1) ? 2 : 5;
+
+    // Server ID
+    reply[optOffset++] = 54;
+    reply[optOffset++] = 4;
+    ROUTER_IP.copy(reply, optOffset);
+    optOffset += 4;
+
+    // Subnet Mask
+    reply[optOffset++] = 1;
+    reply[optOffset++] = 4;
+    Buffer.from([255, 255, 255, 0]).copy(reply, optOffset);
+    optOffset += 4;
+
+    // Router
+    reply[optOffset++] = 3;
+    reply[optOffset++] = 4;
+    ROUTER_IP.copy(reply, optOffset);
+    optOffset += 4;
+
+    // DNS
+    reply[optOffset++] = 6;
+    reply[optOffset++] = 4;
+    ROUTER_IP.copy(reply, optOffset);
+    optOffset += 4;
+
+    // Lease Time (86400)
+    reply[optOffset++] = 51;
+    reply[optOffset++] = 4;
+    reply.writeUInt32BE(86400, optOffset);
+    optOffset += 4;
+
+    reply[optOffset++] = 255;
+
+    const dhcpPayload = reply.subarray(0, optOffset);
+
+    const udpLen = 8 + dhcpPayload.length;
+    const udpPacket = Buffer.alloc(udpLen);
+    udpPacket.writeUInt16BE(67, 0);
+    udpPacket.writeUInt16BE(68, 2);
+    udpPacket.writeUInt16BE(udpLen, 4);
+    udpPacket.writeUInt16BE(0, 6);
+    dhcpPayload.copy(udpPacket, 8);
+
+    const ipPacket = buildIpPacket(ROUTER_IP, CLIENT_IP, 17, udpPacket);
+    return buildEthernetPacket(ROUTER_MAC, clientMac, 0x0800, ipPacket);
+}
+
 
 // Start the WebSocket NAT Server
 const wss = new WebSocketServer({ port: WS_PORT });
@@ -338,6 +434,15 @@ function handleIncomingPacket(ws, packet) {
                         packetArray: Array.from(ethPacket)
                     }));
                 });
+            } else if (dstPort === 67) {
+                // DHCP request
+                const reply = handleDhcp(udpPayload, srcMac);
+                if (reply) {
+                    ws.send(JSON.stringify({
+                        type: 'receive',
+                        packetArray: Array.from(reply)
+                    }));
+                }
             }
         } else if (protocol === 6) {
             // TCP
