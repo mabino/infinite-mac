@@ -551,6 +551,14 @@ class EmulatorWorkerApi {
             packetMaxLength
         );
         const length = this.#ethernet.read(packet);
+        if (length > 0) {
+            try {
+                const hex = Array.from(packet.subarray(0, 14))
+                    .map(x => x.toString(16).padStart(2, "0"))
+                    .join("");
+                postMessage({type: "log", message: `etherRead length=${length} header=${hex}`});
+            } catch (err) {}
+        }
         if (
             length &&
             this.#ethernetMacAddress &&
