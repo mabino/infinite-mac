@@ -248,6 +248,16 @@ export class Emulator {
             : new FallbackEmulatorEthernet(fallbackCommandSender!);
         config.ethernetProvider?.setDelegate({
             receive: (packet: Uint8Array) => {
+                try {
+                    const provider = config.ethernetProvider as any;
+                    if (provider && typeof provider._sendLog === "function") {
+                        const hex = Array.from(packet.subarray(0, 14))
+                            .map(x => x.toString(16).padStart(2, "0"))
+                            .join("");
+                        provider._sendLog(`receive length=${packet.byteLength} header=${hex}`);
+                    }
+                } catch (err) {}
+
                 if (this.#ethernetPinger.handlePongPacket(packet)) {
                     return;
                 }

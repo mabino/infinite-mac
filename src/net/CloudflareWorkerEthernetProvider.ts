@@ -86,6 +86,13 @@ export class CloudflareWorkerEthernetProvider
         });
     }
 
+    _sendLog(message: string): void {
+        this.#send({
+            type: "log",
+            message,
+        });
+    }
+
     #send(message: any) {
         message = JSON.stringify(message);
         if (this.#state === "opened") {

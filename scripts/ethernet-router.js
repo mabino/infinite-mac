@@ -399,6 +399,8 @@ wss.on('connection', (ws) => {
             } else if (type === 'send') {
                 const packet = Buffer.from(payload.packetArray);
                 handleIncomingPacket(ws, packet);
+            } else if (type === 'log') {
+                console.log(`[CLIENT-LOG] ${payload.message}`);
             }
         } catch (e) {
             console.error('[WS] Message handling error:', e);
