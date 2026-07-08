@@ -4,6 +4,7 @@ import http from 'http';
 import https from 'https';
 import dns from 'dns';
 import { URL } from 'url';
+import zlib from 'zlib';
 
 const ROUTER_IP = Buffer.from([192, 168, 1, 1]);
 const ROUTER_MAC = Buffer.from([0xb2, 0x05, 0x02, 0x00, 0x00, 0x01]);
@@ -47,9 +48,10 @@ const proxyServer = http.createServer((req, res) => {
 
         const headers = { ...req.headers };
         
-        // Strip proxy-specific headers
+        // Strip proxy-specific and compression headers
         delete headers['proxy-connection'];
         delete headers['connection'];
+        delete headers['accept-encoding']; // Request uncompressed data from upstream if possible
         headers['host'] = upstreamHost + (parsedUrl.port ? `:${parsedUrl.port}` : '');
 
         const requestOptions = {
@@ -72,7 +74,7 @@ const proxyServer = http.createServer((req, res) => {
                 responseHeaders['location'] = responseHeaders['location'].replace(/^https:\/\//i, 'http://');
             }
             if (isHtml) {
-                // Remove content-length since we will modify the body
+                // Remove content-length and encoding headers since we will serve uncompressed plain HTML
                 delete responseHeaders['content-length'];
                 delete responseHeaders['content-security-policy'];
                 delete responseHeaders['content-encoding'];
@@ -80,12 +82,23 @@ const proxyServer = http.createServer((req, res) => {
 
             res.writeHead(clientRes.statusCode, responseHeaders);
 
+            // Handle decompression based on content-encoding
+            let responseStream = clientRes;
+            const encoding = clientRes.headers['content-encoding'];
+            if (encoding === 'gzip') {
+                responseStream = clientRes.pipe(zlib.createGunzip());
+            } else if (encoding === 'deflate') {
+                responseStream = clientRes.pipe(zlib.createInflate());
+            } else if (encoding === 'br') {
+                responseStream = clientRes.pipe(zlib.createBrotliDecompress());
+            }
+
             if (isHtml) {
                 let body = '';
-                clientRes.on('data', (chunk) => {
+                responseStream.on('data', (chunk) => {
                     body += chunk.toString('utf8');
                 });
-                clientRes.on('end', () => {
+                responseStream.on('end', () => {
                     // Strip modern bloated JS, rewrite HTTPS -> HTTP
                     const processed = body
                         .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
@@ -95,7 +108,7 @@ const proxyServer = http.createServer((req, res) => {
                     res.end(processed, 'utf8');
                 });
             } else {
-                clientRes.pipe(res);
+                responseStream.pipe(res);
             }
         });
 
