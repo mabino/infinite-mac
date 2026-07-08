@@ -112,9 +112,10 @@ const proxyServer = http.createServer((req, res) => {
                     body += chunk.toString('utf8');
                 });
                 responseStream.on('end', () => {
-                    // Strip modern bloated JS, rewrite HTTPS -> HTTP
+                    // Strip modern bloated JS/CSS and rewrite HTTPS -> HTTP
                     const processed = body
-                        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+                        .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+                        .replace(/<style\b[\s\S]*?<\/style>/gi, '')
                         .replace(/on\w+="[^"]*"/gi, '') // Remove simple inline handlers
                         .replace(/on\w+='[^']*'/gi, '')
                         .replace(/https:\/\//gi, 'http://');
