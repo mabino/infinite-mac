@@ -67,6 +67,10 @@ const proxyServer = http.createServer((req, res) => {
             const isHtml = contentType.toLowerCase().includes('text/html');
 
             const responseHeaders = { ...clientRes.headers };
+            if (responseHeaders['location']) {
+                console.log(`[PROXY] Rewriting Location header: ${responseHeaders['location']}`);
+                responseHeaders['location'] = responseHeaders['location'].replace(/^https:\/\//i, 'http://');
+            }
             if (isHtml) {
                 // Remove content-length since we will modify the body
                 delete responseHeaders['content-length'];
