@@ -40,19 +40,26 @@ const proxyServer = http.createServer((req, res) => {
         }
 
         const parsedUrl = new URL(targetUrl);
+        let upstreamHost = parsedUrl.hostname;
+        if (upstreamHost.endsWith('.')) {
+            upstreamHost = upstreamHost.slice(0, -1);
+        }
+
         const headers = { ...req.headers };
         
         // Strip proxy-specific headers
         delete headers['proxy-connection'];
         delete headers['connection'];
-        headers['host'] = parsedUrl.host;
+        headers['host'] = upstreamHost + (parsedUrl.port ? `:${parsedUrl.port}` : '');
 
         const requestOptions = {
             method: req.method,
             headers: headers,
-            host: parsedUrl.hostname,
+            host: upstreamHost,
             port: parsedUrl.port || 443,
             path: parsedUrl.pathname + parsedUrl.search,
+            servername: upstreamHost, // Explicitly specify SNI without trailing dot
+            rejectUnauthorized: false, // Bypass certificate validation errors for legacy/retro sites
         };
 
         const clientReq = https.request(requestOptions, (clientRes) => {
