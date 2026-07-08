@@ -5,12 +5,23 @@ import https from 'https';
 import dns from 'dns';
 import { URL } from 'url';
 
-const ROUTER_IP = Buffer.from([10, 0, 2, 2]);
-const ROUTER_MAC = Buffer.from([0, 5, 2, 0, 0, 1]);
-const CLIENT_IP = Buffer.from([10, 0, 2, 15]);
+const ROUTER_IP = Buffer.from([192, 168, 1, 1]);
+const ROUTER_MAC = Buffer.from([0xb2, 0x05, 0x02, 0x00, 0x00, 0x01]);
+const CLIENT_IP = Buffer.from([192, 168, 1, 15]);
 
 const PROXY_PORT = 8081;
 const WS_PORT = 8080;
+
+function sendPacket(ws, packet, delayMs = 20) {
+    setTimeout(() => {
+        if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({
+                type: 'receive',
+                packetArray: Array.from(packet)
+            }));
+        }
+    }, delayMs);
+}
 
 // Set up the Vintage Web Proxy
 const proxyServer = http.createServer((req, res) => {
@@ -301,7 +312,6 @@ function handleDhcp(udpPayload, clientMac) {
     reply.writeUInt16BE(flags, 10); // Copy broadcast flag
 
     CLIENT_IP.copy(reply, 16);
-    ROUTER_IP.copy(reply, 20);
     chaddr.copy(reply, 28);
     reply.writeUInt32BE(0x63825363, 236); // Magic Cookie
 
@@ -336,22 +346,10 @@ function handleDhcp(udpPayload, clientMac) {
     ROUTER_IP.copy(reply, optOffset);
     optOffset += 4;
 
-    // Lease Time (86400)
+    // Lease Time (Infinite: 0xffffffff)
     reply[optOffset++] = 51;
     reply[optOffset++] = 4;
-    reply.writeUInt32BE(86400, optOffset);
-    optOffset += 4;
-
-    // Renewal Time (43200)
-    reply[optOffset++] = 58;
-    reply[optOffset++] = 4;
-    reply.writeUInt32BE(43200, optOffset);
-    optOffset += 4;
-
-    // Rebinding Time (75600)
-    reply[optOffset++] = 59;
-    reply[optOffset++] = 4;
-    reply.writeUInt32BE(75600, optOffset);
+    reply.writeUInt32BE(0xffffffff, optOffset);
     optOffset += 4;
 
     reply[optOffset++] = 255;
@@ -366,13 +364,16 @@ function handleDhcp(udpPayload, clientMac) {
     udpPacket.writeUInt16BE(0, 6);
     dhcpPayload.copy(udpPacket, 8);
 
-    const BROADCAST_IP = Buffer.from([255, 255, 255, 255]);
-    const udpChk = udpChecksum(ROUTER_IP, BROADCAST_IP, udpPacket);
+    // Always use broadcast destination for DHCP replies.
+    // Some vintage IP stacks (like Open Transport) drop unicast IP packets destined for the leased IP
+    // before the lease is fully bound and configured on the interface.
+    const destMac = Buffer.from([0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
+    const destIp = Buffer.from([255, 255, 255, 255]);
+
+    const udpChk = udpChecksum(ROUTER_IP, destIp, udpPacket);
     udpPacket.writeUInt16BE(udpChk, 6);
 
-    const ipPacket = buildIpPacket(ROUTER_IP, BROADCAST_IP, 17, udpPacket);
-    const broadcastFlag = (flags & 0x8000) !== 0;
-    const destMac = broadcastFlag ? Buffer.from([0xff, 0xff, 0xff, 0xff, 0xff, 0xff]) : clientMac;
+    const ipPacket = buildIpPacket(ROUTER_IP, destIp, 17, udpPacket);
 
     return buildEthernetPacket(ROUTER_MAC, destMac, 0x0800, ipPacket);
 }
@@ -424,6 +425,13 @@ function handleIncomingPacket(ws, packet) {
     const srcMac = packet.subarray(6, 12);
     const etherType = packet.readUInt16BE(12);
 
+    // Log ALL non-AppleTalk packets with full hex for debugging
+    if (etherType !== 0x000c && etherType !== 0x80f3 && etherType !== 0x809b) {
+        const dstMacStr = Array.from(dstMac).map(x => x.toString(16).padStart(2, '0')).join(':');
+        const srcMacStr = Array.from(srcMac).map(x => x.toString(16).padStart(2, '0')).join(':');
+        console.log(`[PKT-IN] EtherType=0x${etherType.toString(16).padStart(4, '0')} src=${srcMacStr} dst=${dstMacStr} len=${packet.length} hex=${packet.toString('hex').substring(0, 200)}`);
+    }
+
     if (etherType === 0x0806) {
         // ARP Request
         const arpPayload = packet.slice(14);
@@ -435,49 +443,66 @@ function handleIncomingPacket(ws, packet) {
         
         const arpReplyPayload = handleArp(arpPayload);
         if (arpReplyPayload) {
-            console.log(`[ARP] Sending periodic reply variations for Target IP: ${targetIp}`);
+            console.log(`[ARP] Sending standard unicast and broadcast replies (64 bytes) for Target IP: ${targetIp}`);
             
-            const sendReplies = () => {
-                if (ws.readyState !== 1) return; // Only send if WebSocket is still open
-                
+            if (ws.readyState === 1) {
                 // Build Ethernet Headers
-                const unicastHeader = Buffer.alloc(14);
-                srcMac.copy(unicastHeader, 0); // destination = srcMac
-                ROUTER_MAC.copy(unicastHeader, 6); // source = ROUTER_MAC
-                unicastHeader.writeUInt16BE(0x0806, 12);
+                 const broadcastHeader = Buffer.alloc(14);
+                 broadcastHeader.fill(0xff, 0, 6); // destination = broadcast
+                 ROUTER_MAC.copy(broadcastHeader, 6); // source = ROUTER_MAC
+                 broadcastHeader.writeUInt16BE(0x0806, 12);
 
-                const broadcastHeader = Buffer.alloc(14);
-                Buffer.from([255, 255, 255, 255, 255, 255]).copy(broadcastHeader, 0); // destination = broadcast
-                ROUTER_MAC.copy(broadcastHeader, 6); // source = ROUTER_MAC
-                broadcastHeader.writeUInt16BE(0x0806, 12);
+                 // Build 42-byte unpadded packet (14 header + 28 payload)
+                 const broadcastPkt = Buffer.concat([
+                     broadcastHeader, 
+                     arpReplyPayload
+                 ]);
 
-                // 1. Unpadded (42 bytes total: 14 header + 28 payload)
-                const uni42 = Buffer.concat([unicastHeader, arpReplyPayload]);
-                const bcast42 = Buffer.concat([broadcastHeader, arpReplyPayload]);
+                 console.log(`[ARP-OUT] Queueing broadcast reply hex (${broadcastPkt.length}B): ${broadcastPkt.toString('hex')} with 200ms delay`);
+                 sendPacket(ws, broadcastPkt, 200);
 
-                // 2. Padded to 60 bytes
-                const uni60 = Buffer.concat([uni42, Buffer.alloc(60 - uni42.length, 0)]);
-                const bcast60 = Buffer.concat([bcast42, Buffer.alloc(60 - bcast42.length, 0)]);
+                 // After ARP reply, proactively send a gratuitous ARP from the router
+                 // so the guest also has OUR MAC in its ARP cache
+                 const gratuitousArp = Buffer.alloc(28);
+                 gratuitousArp.writeUInt16BE(0x0001, 0); // HTYPE: Ethernet
+                 gratuitousArp.writeUInt16BE(0x0800, 2); // PTYPE: IPv4
+                 gratuitousArp[4] = 6; // HLEN
+                 gratuitousArp[5] = 4; // PLEN
+                 gratuitousArp.writeUInt16BE(2, 6); // OPER: Reply
+                 ROUTER_MAC.copy(gratuitousArp, 8); // Sender MAC
+                 ROUTER_IP.copy(gratuitousArp, 14); // Sender IP
+                 srcMac.copy(gratuitousArp, 18); // Target MAC
+                 CLIENT_IP.copy(gratuitousArp, 24); // Target IP
 
-                // 3. Padded to 64 bytes
-                const uni64 = Buffer.concat([uni42, Buffer.alloc(64 - uni42.length, 0)]);
-                const bcast64 = Buffer.concat([bcast42, Buffer.alloc(64 - bcast42.length, 0)]);
+                 const gratArpHeader = Buffer.alloc(14);
+                 gratArpHeader.fill(0xff, 0, 6); // broadcast
+                 ROUTER_MAC.copy(gratArpHeader, 6);
+                 gratArpHeader.writeUInt16BE(0x0806, 12);
+                 const gratArpPkt = Buffer.concat([gratArpHeader, gratuitousArp]);
+                 console.log(`[ARP-OUT] Sending gratuitous ARP from router`);
+                 sendPacket(ws, gratArpPkt, 500);
 
-                // Send all 6 variations
-                const packetsToSend = [uni42, bcast42, uni60, bcast60, uni64, bcast64];
-                for (const p of packetsToSend) {
-                    ws.send(JSON.stringify({
-                        type: 'receive',
-                        packetArray: Array.from(p)
-                    }));
-                }
-            };
+                 // Proactively send ICMP echo request to the guest after 1.5 seconds
+                 // This tests if the guest IP stack can RESPOND to incoming IP traffic
+                 setTimeout(() => {
+                     if (ws.readyState === 1) {
+                         const icmpPayload = Buffer.alloc(8);
+                         icmpPayload[0] = 8; // Type: Echo Request
+                         icmpPayload[1] = 0; // Code: 0
+                         icmpPayload.writeUInt16BE(0, 2); // Checksum placeholder
+                         icmpPayload.writeUInt16BE(0x1234, 4); // Identifier
+                         icmpPayload.writeUInt16BE(1, 6); // Sequence Number
+                         // Calculate ICMP checksum
+                         const icmpSum = checksum(icmpPayload);
+                         icmpPayload.writeUInt16BE(icmpSum, 2);
 
-            // Send immediately, after 500ms, 1500ms, and 3000ms
-            sendReplies();
-            setTimeout(sendReplies, 500);
-            setTimeout(sendReplies, 1500);
-            setTimeout(sendReplies, 3000);
+                         const ipPacket = buildIpPacket(ROUTER_IP, CLIENT_IP, 1, icmpPayload); // Protocol 1 = ICMP
+                         const ethPacket = buildEthernetPacket(ROUTER_MAC, srcMac, 0x0800, ipPacket);
+                         console.log(`[ICMP-PROBE] Sending proactive ICMP echo request to guest (${ethPacket.length}B): ${ethPacket.toString('hex')}`);
+                         sendPacket(ws, ethPacket, 0);
+                     }
+                 }, 1500);
+            }
         }
     } else if (etherType === 0x0800) {
         // IPv4 Packet
@@ -524,19 +549,13 @@ function handleIncomingPacket(ws, packet) {
                     const ipPacket = buildIpPacket(ROUTER_IP, CLIENT_IP, 17, udpPacket);
                     const ethPacket = buildEthernetPacket(ROUTER_MAC, srcMac, 0x0800, ipPacket);
                     
-                    ws.send(JSON.stringify({
-                        type: 'receive',
-                        packetArray: Array.from(ethPacket)
-                    }));
+                    sendPacket(ws, ethPacket);
                 });
             } else if (dstPort === 67) {
                 // DHCP request
                 const reply = handleDhcp(udpPayload, srcMac);
                 if (reply) {
-                    ws.send(JSON.stringify({
-                        type: 'receive',
-                        packetArray: Array.from(reply)
-                    }));
+                    sendPacket(ws, reply);
                 }
             }
         } else if (protocol === 6) {
@@ -588,14 +607,11 @@ function handleIncomingPacket(ws, packet) {
                     const ipPacket = buildIpPacket(conn.dstIp, conn.clientIp, 6, tcpPacket);
                     const ethPacket = buildEthernetPacket(ROUTER_MAC, conn.clientMac, 0x0800, ipPacket);
                     
-                    ws.send(JSON.stringify({
-                        type: 'receive',
-                        packetArray: Array.from(ethPacket)
-                    }));
+                    sendPacket(ws, ethPacket);
                     conn.serverSeq = (conn.serverSeq + 1) >>> 0;
 
                     // Establish real connection to the target/proxy
-                    const isProxyRequest = (dstIpStr === '10.0.2.2' && dstPort === 8080) || dstPort === 80;
+                    const isProxyRequest = (dstIpStr === '192.168.1.1' && dstPort === 8080) || dstPort === 80;
                     const realPort = isProxyRequest ? PROXY_PORT : dstPort;
                     const realHost = isProxyRequest ? '127.0.0.1' : dstIpStr;
 
@@ -623,10 +639,7 @@ function handleIncomingPacket(ws, packet) {
                         const ipP = buildIpPacket(conn.dstIp, conn.clientIp, 6, tcpP);
                         const ethP = buildEthernetPacket(ROUTER_MAC, conn.clientMac, 0x0800, ipP);
                         
-                        ws.send(JSON.stringify({
-                            type: 'receive',
-                            packetArray: Array.from(ethP)
-                        }));
+                        sendPacket(ws, ethP);
                         conn.serverSeq = (conn.serverSeq + chunk.length) >>> 0;
                     });
 
@@ -678,6 +691,30 @@ function handleIncomingPacket(ws, packet) {
                     sendAck(conn);
                 }
             }
+        } else if (protocol === 1) {
+            // ICMP
+            const icmpOffset = 14 + ipHeaderLen;
+            const icmpPayload = packet.subarray(icmpOffset);
+            const icmpType = icmpPayload[0];
+            const icmpCode = icmpPayload[1];
+            
+            console.log(`[ICMP] Type: ${icmpType}, Code: ${icmpCode}`);
+            
+            if (icmpType === 8) { // Echo Request
+                console.log(`[ICMP] Received Echo Request from Mac, replying...`);
+                const replyPayload = Buffer.from(icmpPayload);
+                replyPayload[0] = 0; // Type: 0 (Echo Reply)
+                
+                // Recalculate ICMP checksum
+                replyPayload.writeUInt16BE(0, 2);
+                const icmpChk = checksum(replyPayload);
+                replyPayload.writeUInt16BE(icmpChk, 2);
+                
+                const ipPacket = buildIpPacket(ROUTER_IP, srcIp, 1, replyPayload);
+                const ethPacket = buildEthernetPacket(ROUTER_MAC, srcMac, 0x0800, ipPacket);
+                
+                sendPacket(ws, ethPacket);
+            }
         }
     } else {
         const dstMacStr = Array.from(dstMac).map(x => x.toString(16).padStart(2, '0')).join(':');
@@ -696,10 +733,7 @@ function sendAck(conn) {
     );
     const ipPacket = buildIpPacket(conn.dstIp, conn.clientIp, 6, tcpPacket);
     const ethPacket = buildEthernetPacket(ROUTER_MAC, conn.clientMac, 0x0800, ipPacket);
-    conn.ws.send(JSON.stringify({
-        type: 'receive',
-        packetArray: Array.from(ethPacket)
-    }));
+    sendPacket(conn.ws, ethPacket);
 }
 
 function sendFin(conn) {
@@ -712,10 +746,7 @@ function sendFin(conn) {
     );
     const ipPacket = buildIpPacket(conn.dstIp, conn.clientIp, 6, tcpPacket);
     const ethPacket = buildEthernetPacket(ROUTER_MAC, conn.clientMac, 0x0800, ipPacket);
-    conn.ws.send(JSON.stringify({
-        type: 'receive',
-        packetArray: Array.from(ethPacket)
-    }));
+    sendPacket(conn.ws, ethPacket);
     conn.serverSeq = (conn.serverSeq + 1) >>> 0;
 }
 
@@ -729,10 +760,7 @@ function sendRst(conn) {
     );
     const ipPacket = buildIpPacket(conn.dstIp, conn.clientIp, 6, tcpPacket);
     const ethPacket = buildEthernetPacket(ROUTER_MAC, conn.clientMac, 0x0800, ipPacket);
-    conn.ws.send(JSON.stringify({
-        type: 'receive',
-        packetArray: Array.from(ethPacket)
-    }));
+    sendPacket(conn.ws, ethPacket);
     connections.delete(`${Array.from(conn.clientIp).join('.')}:${conn.srcPort}->${Array.from(conn.dstIp).join('.')}:${conn.dstPort}`);
 }
 

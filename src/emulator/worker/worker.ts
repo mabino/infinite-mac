@@ -541,6 +541,17 @@ class EmulatorWorkerApi {
             packetPtr,
             packetPtr + packetLength
         );
+        try {
+            const etherType = (packet[12] << 8) | packet[13];
+            // Exclude common AppleTalk broadcasts (0x809b, 0x80f3) to avoid log spam,
+            // but log all IP, ARP and other packets.
+            if (etherType !== 0x809b && etherType !== 0x80f3 && etherType !== 0x002a && etherType !== 0x000c) {
+                postMessage({
+                    type: "log",
+                    message: `[WORKER] etherWrite dest=${destination} len=${packetLength} type=0x${etherType.toString(16).padStart(4, "0")}`
+                });
+            }
+        } catch (err) {}
         sendEthernetPacket(destination, packet);
     }
 
