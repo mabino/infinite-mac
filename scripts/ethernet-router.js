@@ -635,19 +635,27 @@ function handleIncomingPacket(ws, packet) {
 
                     socket.on('data', (chunk) => {
                         console.log(`[TCP] Data from real destination for ${connectionKey}: ${chunk.length} bytes`);
-                        const tcpP = buildTcpPacket(
-                            conn.dstIp, conn.clientIp,
-                            conn.dstPort, conn.srcPort,
-                            conn.serverSeq, conn.serverAck,
-                            0x18, // PSH | ACK
-                            65535,
-                            chunk
-                        );
-                        const ipP = buildIpPacket(conn.dstIp, conn.clientIp, 6, tcpP);
-                        const ethP = buildEthernetPacket(ROUTER_MAC, conn.clientMac, 0x0800, ipP);
-                        
-                        sendPacket(ws, ethP);
-                        conn.serverSeq = (conn.serverSeq + chunk.length) >>> 0;
+                        const MSS = 1460;
+                        let offset = 0;
+                        while (offset < chunk.length) {
+                            const size = Math.min(chunk.length - offset, MSS);
+                            const segment = chunk.subarray(offset, offset + size);
+                            
+                            const tcpP = buildTcpPacket(
+                                conn.dstIp, conn.clientIp,
+                                conn.dstPort, conn.srcPort,
+                                conn.serverSeq, conn.serverAck,
+                                0x18, // PSH | ACK
+                                65535,
+                                segment
+                            );
+                            const ipP = buildIpPacket(conn.dstIp, conn.clientIp, 6, tcpP);
+                            const ethP = buildEthernetPacket(ROUTER_MAC, conn.clientMac, 0x0800, ipP);
+                            
+                            sendPacket(ws, ethP);
+                            conn.serverSeq = (conn.serverSeq + size) >>> 0;
+                            offset += size;
+                        }
                     });
 
                     socket.on('end', () => {
