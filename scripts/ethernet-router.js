@@ -73,18 +73,23 @@ const proxyServer = http.createServer((req, res) => {
                 console.log(`[PROXY] Rewriting Location header: ${responseHeaders['location']}`);
                 responseHeaders['location'] = responseHeaders['location'].replace(/^https:\/\//i, 'http://');
             }
-            if (isHtml) {
-                // Remove content-length and encoding headers since we will serve uncompressed plain HTML
+
+            const encoding = clientRes.headers['content-encoding'];
+            const needsDecompression = encoding === 'gzip' || encoding === 'deflate' || encoding === 'br';
+
+            if (needsDecompression || isHtml) {
+                // Remove content-length and encoding headers since the response body is being modified/decompressed
                 delete responseHeaders['content-length'];
-                delete responseHeaders['content-security-policy'];
                 delete responseHeaders['content-encoding'];
+            }
+            if (isHtml) {
+                delete responseHeaders['content-security-policy'];
             }
 
             res.writeHead(clientRes.statusCode, responseHeaders);
 
             // Handle decompression based on content-encoding
             let responseStream = clientRes;
-            const encoding = clientRes.headers['content-encoding'];
             if (encoding === 'gzip') {
                 responseStream = clientRes.pipe(zlib.createGunzip());
             } else if (encoding === 'deflate') {
@@ -92,6 +97,14 @@ const proxyServer = http.createServer((req, res) => {
             } else if (encoding === 'br') {
                 responseStream = clientRes.pipe(zlib.createBrotliDecompress());
             }
+
+            // Stream error handling to prevent socket hangs
+            responseStream.on('error', (err) => {
+                console.error('[PROXY] Stream Error:', err);
+                if (!res.writableEnded) {
+                    res.end();
+                }
+            });
 
             if (isHtml) {
                 let body = '';
