@@ -193,7 +193,10 @@ export function runDefFromUrl(urlString: string): RunDef | undefined {
 
     let ethernetProvider;
     const appleTalkZoneName = searchParams.get("appleTalk");
-    if (appleTalkZoneName) {
+    const localEthernet = searchParams.get("local_ethernet") === "true";
+    if (localEthernet) {
+        ethernetProvider = new CloudflareWorkerEthernetProvider("local");
+    } else if (appleTalkZoneName) {
         ethernetProvider = new CloudflareWorkerEthernetProvider(
             appleTalkZoneName
         );
@@ -332,7 +335,11 @@ export function runDefToUrl(runDef: RunDef, toEmbed: boolean = false): string {
         url.searchParams.set("screen_scale", runDef.screenScale.toString());
     }
     if (ethernetProvider instanceof CloudflareWorkerEthernetProvider) {
-        url.searchParams.set("appleTalk", ethernetProvider.zoneName());
+        if (ethernetProvider.zoneName() === "local") {
+            url.searchParams.set("local_ethernet", "true");
+        } else {
+            url.searchParams.set("appleTalk", ethernetProvider.zoneName());
+        }
     } else if (ethernetProvider instanceof BroadcastChannelEthernetProvider) {
         url.searchParams.set("broadcast_channel_ethernet", "true");
     }

@@ -61,7 +61,7 @@ def fetch_url(url: str, headers: bool = False) -> bytes:
             data=None,
             headers={"User-Agent": "Infinite Mac (+https://infinitemac.org)"},
         )
-        response = urllib.request.urlopen(request, context=context)
+        response = urllib.request.urlopen(request, context=context, timeout=15)
         if headers:
             return json.dumps(dict(response.headers)).encode()
         return response.read()

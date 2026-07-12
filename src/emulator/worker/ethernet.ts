@@ -36,8 +36,15 @@ export class SharedMemoryEmulatorWorkerEthernet
         const packetLength = new DataView(packetHeader.buffer).getUint16(0);
         const readPacket = new Uint8Array(packetLength);
         this.#receiveRingBuffer.pop(readPacket);
-        packet.set(readPacket);
-        return packetLength;
+        
+        if (readPacket.length > packet.length) {
+            console.warn(`[SharedMemory] Truncating incoming packet from ${readPacket.length} to ${packet.length} bytes`);
+            packet.set(readPacket.subarray(0, packet.length));
+            return packet.length;
+        } else {
+            packet.set(readPacket);
+            return packetLength;
+        }
     }
 }
 
@@ -60,8 +67,14 @@ export class FallbackEmulatorWorkerEthernet implements EmulatorWorkerEthernet {
             return 0;
         }
         const readPacket = this.#packets.shift()!;
-        packet.set(readPacket);
-        return readPacket?.byteLength;
+        if (readPacket.length > packet.length) {
+            console.warn(`[Fallback] Truncating incoming packet from ${readPacket.length} to ${packet.length} bytes`);
+            packet.set(readPacket.subarray(0, packet.length));
+            return packet.length;
+        } else {
+            packet.set(readPacket);
+            return readPacket.byteLength;
+        }
     }
 }
 
