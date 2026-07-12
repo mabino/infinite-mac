@@ -108,3 +108,34 @@ Once connected, open **Netscape Navigator** (or **Internet Explorer**) and try l
 * **`http://news.ycombinator.com`** — Hacker News (text-only view).
 * **`http://google.com`** — Google's search page (rewritten and cleaned of script bloat).
 * **`http://macintoshgarden.org`** — Classic software catalog for downloading vintage apps and games.
+
+---
+
+## 5. Troubleshooting & Tips
+
+### Netscape Freezes on Startup (Gray Screen) / No WebSocket Logs
+If you launch Netscape and the emulator immediately freezes on a gray screen, and there are no logs printed in your `ethernet-router` terminal, the persistent **`Saved HD`** (browser-persisted virtual disk changes) likely has corrupted preferences or a volume ID mismatch with a newly rebuilt `Infinite HD` image.
+
+* **Quick Bypass:** Append `&saved_hd=false` to the URL to run a clean boot ignoring the saved state:
+  `http://localhost:3127/1996/System%207.5.3?local_ethernet=true&saved_hd=false`
+* **Permanently Resetting Saved State:** Open the browser developer console (**Inspect** -> **Console** tab) on the page and execute the following snippet to wipe the browser's Origin Private File System (OPFS):
+  ```javascript
+  (async () => {
+      const root = await navigator.storage.getDirectory();
+      const keys = [];
+      for await (const key of root.keys()) {
+          keys.push(key);
+      }
+      for (const key of keys) {
+          await root.removeEntry(key, { recursive: true });
+      }
+      console.log("Saved HD cleared successfully!");
+  })();
+  ```
+  Once it prints `Saved HD cleared successfully!`, reload the page.
+
+### Netscape Freezes / Hangs on Modern Sites
+Vintage web browsers cannot parse modern JavaScript or TLS configurations.
+* The local proxy automatically intercepts default Netscape/Mozilla homepage requests to prevent loading heavy modern target redirects (like AOL) that crash the emulator.
+* If a remote website hangs indefinitely, the proxy enforces a 15-second timeout and returns a `502 Bad Gateway` error to Netscape rather than locking up the cooperative Mac OS UI thread.
+* For the best experience, use vintage-friendly search engines like [Wiby](http://wiby.me) or plaintext sites like [NeverSSL](http://neverssl.com).

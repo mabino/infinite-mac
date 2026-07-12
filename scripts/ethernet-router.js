@@ -35,6 +35,43 @@ const proxyServer = http.createServer((req, res) => {
             targetUrl = 'http://' + req.headers.host + targetUrl;
         }
 
+        // Intercept Netscape/Mozilla/MCOM startup/welcome/homepages to avoid massive modern page load/redirect loop hangs
+        if (targetUrl.includes('netscape.com') || targetUrl.includes('mcom.com') || targetUrl.includes('mozilla.org')) {
+            console.log(`[PROXY] Intercepting Netscape homepage request to prevent freeze: ${targetUrl}`);
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(`<html>
+<head>
+<title>Welcome to Infinite Mac Networking</title>
+</head>
+<body bgcolor="#FFFFFF" text="#000000">
+<center>
+  <h1>Welcome to Infinite Mac!</h1>
+  <p>Your vintage emulator network connection is active and working.</p>
+  <hr width="80%">
+  <table border="1" cellpadding="10" cellspacing="0" width="80%">
+    <tr bgcolor="#E0E0E0">
+      <td><b>Vintage-Friendly Sites to Try:</b></td>
+    </tr>
+    <tr>
+      <td>
+        <ul>
+          <li><a href="http://wiby.me">Wiby (Retro Search Engine)</a></li>
+          <li><a href="http://neverssl.com">NeverSSL (Plaintext Test Site)</a></li>
+          <li><a href="http://text.npr.org">NPR Plaintext News</a></li>
+          <li><a href="http://news.ycombinator.com">Hacker News</a></li>
+          <li><a href="http://google.com">Google (Proxy-cleaned Search)</a></li>
+          <li><a href="http://macintoshgarden.org">Macintosh Garden</a></li>
+        </ul>
+      </td>
+    </tr>
+  </table>
+</center>
+</body>
+</html>
+`);
+            return;
+        }
+
         // Upgrade HTTP to HTTPS for modern websites
         if (targetUrl.startsWith('http://')) {
             targetUrl = 'https://' + targetUrl.slice(7);
@@ -62,6 +99,7 @@ const proxyServer = http.createServer((req, res) => {
             path: parsedUrl.pathname + parsedUrl.search,
             servername: upstreamHost, // Explicitly specify SNI without trailing dot
             rejectUnauthorized: false, // Bypass certificate validation errors for legacy/retro sites
+            timeout: 15000, // 15s timeout to prevent infinite hangs
         };
 
         const clientReq = https.request(requestOptions, (clientRes) => {
@@ -124,6 +162,11 @@ const proxyServer = http.createServer((req, res) => {
             } else {
                 responseStream.pipe(res);
             }
+        });
+
+        clientReq.on('timeout', () => {
+            console.error(`[PROXY] Request Timeout for ${targetUrl}`);
+            clientReq.destroy();
         });
 
         clientReq.on('error', (err) => {

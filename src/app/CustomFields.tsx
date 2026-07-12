@@ -94,9 +94,18 @@ export function CustomFields({
         runDef.machine.emulatorType
     );
 
-    const [appleTalkEnabled, setAppleTalkEnabled] = useState(false);
-    const [appleTalkZoneName, setAppleTalkZoneName] = useState("");
-    const [localNetEnabled, setLocalNetEnabled] = useState(false);
+    const initialAppleTalkZone = (runDef.ethernetProvider instanceof CloudflareWorkerEthernetProvider)
+        ? runDef.ethernetProvider.zoneName()
+        : "";
+    const [appleTalkEnabled, setAppleTalkEnabled] = useState(
+        initialAppleTalkZone !== "" && initialAppleTalkZone !== "local"
+    );
+    const [appleTalkZoneName, setAppleTalkZoneName] = useState(
+        initialAppleTalkZone !== "local" ? initialAppleTalkZone : ""
+    );
+    const [localNetEnabled, setLocalNetEnabled] = useState(
+        initialAppleTalkZone === "local"
+    );
     const [customDateEnabled, setCustomDateEnabled] = useState(
         runDef.flags.customDate !== undefined
     );
