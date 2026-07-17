@@ -45,6 +45,8 @@ export type RunDef = {
     isEmbed?: boolean;
     screenUpdateMessages?: boolean;
     settings?: EmulatorSettings;
+    hideFooter?: boolean;
+    hideTabs?: boolean;
 };
 
 export type ScreenSize =
@@ -91,6 +93,12 @@ export function runDefFromUrl(urlString: string): RunDef | undefined {
         isEmbed && searchParams.get("screen_update_messages") === "true";
     const startPaused = searchParams.get("paused") === "true";
     const autoPause = searchParams.get("auto_pause") === "true";
+    const hideFooter =
+        searchParams.get("hide_footer") === "true" ||
+        searchParams.get("minimal") === "true";
+    const hideTabs =
+        searchParams.get("hide_tabs") === "true" ||
+        searchParams.get("minimal") === "true";
     let includeInfiniteHD;
     let includeSavedHD;
     const includeLibrary = searchParams.get("library") !== "false";
@@ -263,6 +271,8 @@ export function runDefFromUrl(urlString: string): RunDef | undefined {
         isEmbed,
         screenUpdateMessages,
         settings,
+        hideFooter,
+        hideTabs,
     };
 }
 

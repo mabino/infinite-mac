@@ -97,6 +97,7 @@ export default function Mac({
         screenScale: screenScaleProp,
         screenUpdateMessages,
         isEmbed,
+        hideTabs,
         ethernetProvider,
         debugFallback,
         debugPaused,
@@ -912,7 +913,10 @@ export default function Mac({
         "Mac-Screen-Smooth-Scaling": smoothScaling,
     });
     const drawersVisible =
-        !fullscreen && screenSizeProp !== "embed" && !isKeyboardVisible;
+        !fullscreen &&
+        screenSizeProp !== "embed" &&
+        !isKeyboardVisible &&
+        !hideTabs;
 
     return (
         <>

@@ -36,6 +36,7 @@ It will be running at http://localhost:3127.
 Common development tasks, all done via `npm run`:
 
 - `start`: Run local dev server (at http://localhost:3127)
+- `ethernet-router`: Run the local userspace Ethernet router and vintage web proxy (supporting emulator internet access via `?local_ethernet=true`)
 - `import-emulator <emulator>`: Copy generated WebAssembly from an emulator submodule (only necessary if modifying the emulator cores, see [below](#building-the-emulators) for how to rebuild them). The following emulators are supported:
     - `basiliskii`: Basilisk II from https://github.com/mihaip/macemu
     - `sheepshaver`: SheepShaver from https://github.com/mihaip/macemu

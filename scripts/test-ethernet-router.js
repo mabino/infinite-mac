@@ -138,3 +138,37 @@ function testChecksums() {
 }
 
 testChecksums();
+
+function isPrivateIP(ip) {
+    if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') return true;
+    if (ip.startsWith('10.')) return true;
+    if (ip.startsWith('192.168.')) return true;
+    if (ip.startsWith('169.254.')) return true;
+    if (ip.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)) return true;
+    return false;
+}
+
+function testIsPrivateIP() {
+    console.log("Running isPrivateIP validation tests...");
+
+    // Private / Loopback IPs should return true
+    assert.strictEqual(isPrivateIP('127.0.0.1'), true);
+    assert.strictEqual(isPrivateIP('::1'), true);
+    assert.strictEqual(isPrivateIP('localhost'), true);
+    assert.strictEqual(isPrivateIP('10.0.0.1'), true);
+    assert.strictEqual(isPrivateIP('192.168.1.1'), true);
+    assert.strictEqual(isPrivateIP('169.254.1.1'), true);
+    assert.strictEqual(isPrivateIP('172.16.0.1'), true);
+    assert.strictEqual(isPrivateIP('172.31.255.255'), true);
+
+    // Public / External IPs should return false
+    assert.strictEqual(isPrivateIP('8.8.8.8'), false);
+    assert.strictEqual(isPrivateIP('1.1.1.1'), false);
+    assert.strictEqual(isPrivateIP('142.250.190.46'), false);
+    assert.strictEqual(isPrivateIP('172.15.255.255'), false);
+    assert.strictEqual(isPrivateIP('172.32.0.1'), false);
+
+    console.log("isPrivateIP validation tests passed successfully!");
+}
+
+testIsPrivateIP();

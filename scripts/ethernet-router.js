@@ -6,6 +6,15 @@ import dns from 'dns';
 import { URL } from 'url';
 import zlib from 'zlib';
 
+function isPrivateIP(ip) {
+    if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') return true;
+    if (ip.startsWith('10.')) return true;
+    if (ip.startsWith('192.168.')) return true;
+    if (ip.startsWith('169.254.')) return true;
+    if (ip.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)) return true;
+    return false;
+}
+
 const ROUTER_IP = Buffer.from([192, 168, 1, 1]);
 const ROUTER_MAC = Buffer.from([0xb2, 0x05, 0x02, 0x00, 0x00, 0x01]);
 const CLIENT_IP = Buffer.from([192, 168, 1, 15]);
@@ -695,6 +704,12 @@ function handleIncomingPacket(ws, packet) {
                     const isProxyRequest = (dstIpStr === '192.168.1.1' && dstPort === 8080) || dstPort === 80;
                     const realPort = isProxyRequest ? PROXY_PORT : dstPort;
                     const realHost = isProxyRequest ? '127.0.0.1' : dstIpStr;
+
+                    if (!isProxyRequest && isPrivateIP(realHost)) {
+                        console.warn(`[SECURITY] Blocked proxy attempt to private host: ${realHost}:${realPort}`);
+                        sendRst(conn);
+                        return;
+                    }
 
                     console.log(`[TCP] Connecting proxy socket to ${realHost}:${realPort}`);
                     

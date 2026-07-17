@@ -68,7 +68,7 @@ function AppImpl() {
                 </AppearanceProvider>
             </Suspense>
         );
-        if (runDef.isEmbed) {
+        if (runDef.isEmbed || runDef.hideFooter) {
             footer = undefined;
         } else {
             footer = (
