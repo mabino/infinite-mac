@@ -18,7 +18,7 @@
         "use-debounce": "^10.0.3"
     },
     "devDependencies": {
-        "@cloudflare/vite-plugin": "^1.31.0",
+        "@cloudflare/vite-plugin": "^1.64.0",
         "@cloudflare/workers-types": "^4.20250525.0",
         "@eslint/compat": "^1.2.9",
         "@eslint/eslintrc": "^3.3.1",
@@ -41,7 +41,7 @@
         "eslint-plugin-import": "^2.31.0",
         "eslint-plugin-react-hooks": "^5.2.0",
         "prettier": "^3.5.3",
-        "vite": "^8.0.5",
+        "vite": "^8.3.4",
         "vite-plugin-svgr": "^5.2.0",
         "wrangler": "^4.80.0",
         "ws": "^8.21.0"
